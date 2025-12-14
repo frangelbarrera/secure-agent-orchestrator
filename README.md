@@ -1,7 +1,5 @@
 # Secure Agent Orchestrator
 
-## Why This Project Matters
-
 In today's distributed infrastructure landscape, managing remote security agents efficiently is crucial. This API addresses key challenges:
 
 - **Resource Efficiency**: Optimized for low-memory environments (runs smoothly on 4GB RAM systems)
