@@ -9,11 +9,11 @@ In today's distributed infrastructure landscape, managing remote security agents
 - **Operational Visibility**: Real-time command tracking and status monitoring for proactive security management
 
 **Key Metrics:**
-- ⚡ Sub-100ms response times for command execution
-- 🔒 100% secure with stateless JWT authentication
-- 💾 <50MB memory footprint in production
-- 🚀 Handles 1000+ concurrent agent connections
-- 📊 99.9% uptime with async error handling
+-  Sub-100ms response times for command execution
+-  100% secure with stateless JWT authentication
+-  <50MB memory footprint in production
+-  Handles 1000+ concurrent agent connections
+-  99.9% uptime with async error handling
 
 ## Core Capabilities
 
