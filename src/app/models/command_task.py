@@ -20,5 +20,5 @@ class CommandTask(Base):
     command: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="PENDING")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, default=None)
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
