@@ -1,5 +1,10 @@
 # Secure Agent Orchestrator
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Swagger%20UI-blue)](https://secure-agent-orchestrator.onrender.com/docs)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com/)
+
 In today's distributed infrastructure landscape, managing remote security agents efficiently is crucial. This API addresses key challenges:
 
 - **Resource Efficiency**: Optimized for low-memory environments (runs smoothly on 4GB RAM systems)
