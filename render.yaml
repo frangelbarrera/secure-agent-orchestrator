@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: secure-agent-orchestrator
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn src.app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SQLITE_URI
+        value: ./db.sqlite
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: '["*"]'
+      - key: CRUD_ADMIN_ENABLED
+        value: "false"
