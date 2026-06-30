@@ -29,8 +29,9 @@ In today's distributed infrastructure landscape, managing remote security agents
 git clone https://github.com/frangelbarrera/secure-agent-orchestrator.git
 cd secure-agent-orchestrator
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (using uv - faster than pip)
+pip install uv
+uv sync
 
 # Configure environment
 cp .env.example src/.env
@@ -141,10 +142,29 @@ POST /api/v1/login  → Obtain JWT access token
 
 ### Docker Deployment
 ```bash
-# Build and run
+# Build the image
 docker build -t secure-agent-orchestrator .
-docker run -p 8000:8000 secure-agent-orchestrator
+
+# Run with environment file
+docker run -d \
+  --name secure-agent-orchestrator \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  --env-file .env \
+  secure-agent-orchestrator
+
+# Check health
+curl http://localhost:8000/api/v1/health
 ```
+
+### Production Security Checklist
+- [ ] Set `SECRET_KEY` to a random 32+ character string
+- [ ] Change `ADMIN_PASSWORD` from default
+- [ ] Set `ENVIRONMENT=production`
+- [ ] Set `SESSION_SECURE_COOKIES=true`
+- [ ] Restrict `CORS_ORIGINS` to your actual domains
+- [ ] Set `CRUD_ADMIN_ALLOWED_IPS_LIST` to restrict admin access
+- [ ] Use HTTPS (reverse proxy with nginx or Caddy)
 
 ### System Requirements
 - Minimum 4GB RAM
