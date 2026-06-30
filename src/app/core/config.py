@@ -129,7 +129,7 @@ class CRUDAdminSettings(BaseSettings):
     CRUD_ADMIN_REDIS_HOST: str = "localhost"
     CRUD_ADMIN_REDIS_PORT: int = 6379
     CRUD_ADMIN_REDIS_DB: int = 0
-    CRUD_ADMIN_REDIS_PASSWORD: str | None = "None"
+    CRUD_ADMIN_REDIS_PASSWORD: str | None = None
     CRUD_ADMIN_REDIS_SSL: bool = False
 
 
