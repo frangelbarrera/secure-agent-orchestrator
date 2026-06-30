@@ -5,6 +5,8 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com/)
 
+> ⚠️ **Live demo may take ~30 seconds to wake up on first request** (free tier cold start). Once awake, it's fast.
+
 In today's distributed infrastructure landscape, managing remote security agents efficiently is crucial. This API addresses key challenges:
 
 - **Resource Efficiency**: Optimized for low-memory environments (runs smoothly on 4GB RAM systems)
