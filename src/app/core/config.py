@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppSettings(BaseSettings):
-    APP_NAME: str = "Sentinel-Agent-API"
+    APP_NAME: str = "Secure Agent Orchestrator"
     APP_DESCRIPTION: str | None = None
     APP_VERSION: str | None = None
     LICENSE_NAME: str | None = None
