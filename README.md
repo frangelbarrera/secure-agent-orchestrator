@@ -196,6 +196,36 @@ curl http://localhost:8000/api/v1/health
 
 MIT License - see LICENSE file for details
 
+## Live Demo
+
+A live demo is available at: **https://secure-agent-orchestrator.onrender.com/docs**
+
+### What you can try:
+
+1. **Health check** (no auth required):
+   ```bash
+   curl https://secure-agent-orchestrator.onrender.com/api/v1/health
+   ```
+
+2. **Swagger UI** (interactive):
+   - Visit https://secure-agent-orchestrator.onrender.com/docs
+   - Explore all endpoints visually
+   - Try the `/api/v1/health` and `/api/v1/ready` endpoints directly from the browser
+
+3. **Login** (default admin credentials are randomized per deploy):
+   ```bash
+   # Get JWT token (check Render dashboard for ADMIN_PASSWORD)
+   curl -X POST https://secure-agent-orchestrator.onrender.com/api/v1/login \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "username=admin&password=YOUR_ADMIN_PASSWORD"
+   ```
+
+### Demo limitations:
+- **Free tier cold start**: ~30s wake-up on first request after 15 min idle
+- **Ephemeral database**: SQLite data resets on each deploy
+- **Admin panel disabled** in demo for security
+- **Rate limited**: 10 requests/hour per IP
+
 ## Contact
 
 **Frangel Barrera**
