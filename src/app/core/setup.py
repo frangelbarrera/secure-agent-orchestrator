@@ -28,7 +28,7 @@ from .db.database import async_engine as engine
 # -------------- database --------------
 async def create_tables() -> None:
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
 
 
 # No Redis pools needed
