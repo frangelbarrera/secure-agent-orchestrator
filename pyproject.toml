@@ -2,7 +2,7 @@
 name = "secure-agent-orchestrator"
 version = "0.1.0"
 description = "Secure and lightweight REST API for centralized control and orchestration of asynchronous commands to remote security agents."
-authors = [{ name = "Frangel Raúl Crespo Barrera", email = "frangelrcbarrera@gmail.com" }]
+authors = [{ name = "Frangel Raúl Crespo Barrera", email = "201400231+frangelbarrera@users.noreply.github.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.11, <4"
