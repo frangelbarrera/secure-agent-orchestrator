@@ -67,6 +67,30 @@ def lifespan_factory(
     return lifespan
 
 
+def _build_app_metadata_kwargs(settings: AppSettings) -> dict[str, Any]:
+    """Build FastAPI constructor kwargs for app metadata (title, description,
+    contact, license_info).
+
+    FastAPI forwards these to the OpenAPI schema, where the corresponding
+    fields are required strings — passing None makes /openapi.json raise a
+    500 (pydantic ValidationError on info.license.name, etc.). We therefore
+    only include the keys that are actually set.
+    """
+    to_update: dict[str, Any] = {"title": settings.APP_NAME}
+    if settings.APP_DESCRIPTION:
+        to_update["description"] = settings.APP_DESCRIPTION
+    contact: dict[str, Any] = {}
+    if settings.CONTACT_NAME:
+        contact["name"] = settings.CONTACT_NAME
+    if settings.CONTACT_EMAIL:
+        contact["email"] = settings.CONTACT_EMAIL
+    if contact:
+        to_update["contact"] = contact
+    if settings.LICENSE_NAME:
+        to_update["license_info"] = {"name": settings.LICENSE_NAME}
+    return to_update
+
+
 # -------------- application --------------
 def create_application(
     router: APIRouter,
@@ -89,13 +113,7 @@ def create_application(
     """
     # --- before creating application ---
     if isinstance(settings, AppSettings):
-        to_update = {
-            "title": settings.APP_NAME,
-            "description": settings.APP_DESCRIPTION,
-            "contact": {"name": settings.CONTACT_NAME, "email": settings.CONTACT_EMAIL},
-            "license_info": {"name": settings.LICENSE_NAME},
-        }
-        kwargs.update(to_update)
+        kwargs.update(_build_app_metadata_kwargs(settings))
 
     if isinstance(settings, EnvironmentSettings):
         # In production, docs and the openapi schema are completely disabled.

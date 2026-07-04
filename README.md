@@ -31,7 +31,10 @@ Python, plus tests, plus a Dockerfile and a Render Blueprint.
 
 The following screenshots were captured from a local instance running
 with `ENVIRONMENT=local` and a freshly generated `SECRET_KEY`. They
-show the actual UI and API responses, not mockups.
+show the actual UI and API responses, not mockups. Each screenshot was
+verified by a vision model before being accepted; any capture that
+showed a server error, a blank page, or content that did not match its
+stated purpose was discarded and re-captured.
 
 ### Swagger UI (`/docs`)
 
@@ -44,34 +47,35 @@ it requires superuser auth; in `production` it is disabled entirely.
 
 Alternative read-only documentation renderer.
 
-![ReDoc UI](docs/screenshots/05-redoc-ui.png)
+![ReDoc UI](docs/screenshots/02-redoc-ui.png)
 
 ### Health endpoint (`GET /api/v1/health`)
 
 Public liveness probe, no auth required.
 
-![Health endpoint](docs/screenshots/02-health-endpoint.png)
-
-### 401 on unauthenticated `GET /api/v1/users`
-
-The user listing endpoint requires superuser auth. An unauthenticated
-request gets a 401 with `Cache-Control: private, no-store` (visible in
-the response headers when inspected via browser devtools).
-
-![401 on /users](docs/screenshots/04-users-401-unauthorized.png)
+![Health endpoint](docs/screenshots/03-health-endpoint.png)
 
 ### OpenAPI schema (`/openapi.json`)
 
 The full OpenAPI 3.1 schema exposed as JSON.
 
-![OpenAPI schema](docs/screenshots/03-openapi-schema.png)
+![OpenAPI schema](docs/screenshots/04-openapi-schema.png)
+
+### 401 on unauthenticated `GET /api/v1/users`
+
+The user listing endpoint requires superuser auth. An unauthenticated
+request gets a 401 with `Cache-Control: private, no-store` — a
+defense-in-depth measure that prevents a CDN or shared proxy from
+serving the 401 response to a different user.
+
+![401 on /users](docs/screenshots/05-401-unauthorized.png)
 
 ### Functional smoke test
 
 The `scripts/smoke_test.py` script exercises the security-critical
-flows end-to-end. All checks pass.
+flows end-to-end. All 10 checks pass.
 
-![Smoke test output](docs/screenshots/06-smoke-test-output.png)
+![Smoke test output](docs/screenshots/06-smoke-test.png)
 
 ### Test & coverage report
 
