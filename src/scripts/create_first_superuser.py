@@ -9,6 +9,7 @@ Run with:
     ADMIN_PASSWORD="StrongTestAdminPass123!" \
     venv/bin/python -m src.scripts.create_first_superuser
 """
+
 import asyncio
 import logging
 

@@ -8,10 +8,10 @@ These exercise the bugs that were fixed in the security refactor:
   wrong one, and must work for passwords longer than 72 bytes (the
   bcrypt truncation boundary).
 """
+
 from __future__ import annotations
 
 import importlib
-import os
 import secrets
 
 import pytest
@@ -76,12 +76,12 @@ def test_cors_validator_accepts_explicit_in_production(monkeypatch):
 @pytest.mark.parametrize(
     "password",
     [
-        "a",                # too short, missing everything
-        "abcdefgh",         # no upper, no digit, no special
-        "ABCDEFGH",         # no lower, no digit, no special
-        "abcdEFGH",         # no digit, no special
-        "abcdEFG1",         # no special
-        "abcdEFG!",         # no digit
+        "a",  # too short, missing everything
+        "abcdefgh",  # no upper, no digit, no special
+        "ABCDEFGH",  # no lower, no digit, no special
+        "abcdEFGH",  # no digit, no special
+        "abcdEFG1",  # no special
+        "abcdEFG!",  # no digit
     ],
 )
 def test_password_complexity_rejects_weak(password):

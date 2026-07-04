@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,7 +20,7 @@ class SecurityAgentRead(SecurityAgentBase):
 
 
 class SecurityAgentUpdate(BaseModel):
-    hostname: Optional[str] = None
-    ip_address: Optional[str] = None
-    status: Optional[str] = None
-    last_checkin: Optional[datetime] = None
+    hostname: str | None = None
+    ip_address: str | None = None
+    status: str | None = None
+    last_checkin: datetime | None = None

@@ -5,6 +5,7 @@ Run with:
     ADMIN_PASSWORD="StrongTestAdminPass123!" \
     venv/bin/python scripts/smoke_test.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -96,17 +97,13 @@ async def main() -> int:
             if r.status_code != 200:
                 failures.append(f"GET /api/v1/user/me/ returned {r.status_code}, expected 200")
             if "private" not in cache_ctrl_authed.lower():
-                failures.append(
-                    f"cache-control on authed request was {cache_ctrl_authed!r}, expected private"
-                )
+                failures.append(f"cache-control on authed request was {cache_ctrl_authed!r}, expected private")
 
             # --- list users still requires admin (403 for non-admin) ----------
             r = await c.get("/api/v1/users", headers=auth)
             print(f"GET  /api/v1/users (non-admin)           -> {r.status_code} {r.text[:120]}")
             if r.status_code != 403:
-                failures.append(
-                    f"GET /api/v1/users as non-admin returned {r.status_code}, expected 403"
-                )
+                failures.append(f"GET /api/v1/users as non-admin returned {r.status_code}, expected 403")
 
             # --- /execute-command should be gone (replaced by /command) -------
             r = await c.post(
@@ -116,9 +113,7 @@ async def main() -> int:
             )
             print(f"POST .../execute-command (deprecated)    -> {r.status_code} {r.text[:120]}")
             if r.status_code != 404:
-                failures.append(
-                    f"POST /execute-command returned {r.status_code}, expected 404 (endpoint removed)"
-                )
+                failures.append(f"POST /execute-command returned {r.status_code}, expected 404 (endpoint removed)")
 
             # --- /docs should be available in LOCAL ---------------------------
             r = await c.get("/docs")

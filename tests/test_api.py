@@ -3,6 +3,7 @@
 These are the same checks that scripts/smoke_test.py performs, but
 broken into individual pytest cases so failures are easier to triage.
 """
+
 from __future__ import annotations
 
 import pytest

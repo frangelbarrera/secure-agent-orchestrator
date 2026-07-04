@@ -1,5 +1,3 @@
-from typing import Optional
-
 from crudadmin import CRUDAdmin
 
 from ..core.config import EnvironmentOption, settings
@@ -7,7 +5,7 @@ from ..core.db.database import async_get_db
 from .views import register_admin_views
 
 
-def create_admin_interface() -> Optional[CRUDAdmin]:
+def create_admin_interface() -> CRUDAdmin | None:
     """Create and configure the admin interface."""
     if not settings.CRUD_ADMIN_ENABLED:
         return None

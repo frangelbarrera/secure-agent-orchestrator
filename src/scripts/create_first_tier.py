@@ -5,12 +5,12 @@ Run with:
     ADMIN_PASSWORD="StrongTestAdminPass123!" \
     venv/bin/python -m src.scripts.create_first_tier
 """
+
 import asyncio
 import logging
 
 from sqlalchemy import select
 
-from ..app.core.config import settings
 from ..app.core.db.database import AsyncSession, Base, async_engine, local_session
 from ..app.models.tier import Tier  # noqa: F401  (register model with Base.metadata)
 

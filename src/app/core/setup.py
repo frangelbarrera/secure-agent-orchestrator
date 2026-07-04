@@ -19,7 +19,6 @@ from .config import (
     DatabaseSettings,
     EnvironmentOption,
     EnvironmentSettings,
-    settings,
 )
 from .db.database import Base
 from .db.database import async_engine as engine
@@ -38,13 +37,7 @@ async def set_threadpool_tokens(number_of_tokens: int = 100) -> None:
 
 
 def lifespan_factory(
-    settings: (
-        DatabaseSettings
-        | AppSettings
-        | ClientSideCacheSettings
-        | CORSSettings
-        | EnvironmentSettings
-    ),
+    settings: (DatabaseSettings | AppSettings | ClientSideCacheSettings | CORSSettings | EnvironmentSettings),
     create_tables_on_start: bool = True,
 ) -> Callable[[FastAPI], _AsyncGeneratorContextManager[Any]]:
     """Factory to create a lifespan async context manager for a FastAPI app."""
@@ -77,13 +70,7 @@ def lifespan_factory(
 # -------------- application --------------
 def create_application(
     router: APIRouter,
-    settings: (
-        DatabaseSettings
-        | AppSettings
-        | ClientSideCacheSettings
-        | CORSSettings
-        | EnvironmentSettings
-    ),
+    settings: (DatabaseSettings | AppSettings | ClientSideCacheSettings | CORSSettings | EnvironmentSettings),
     create_tables_on_start: bool = True,
     lifespan: Callable[[FastAPI], _AsyncGeneratorContextManager[Any]] | None = None,
     **kwargs: Any,

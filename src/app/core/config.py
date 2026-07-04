@@ -1,9 +1,8 @@
 import os
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import SecretStr, field_validator, model_validator, computed_field
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
 
 # Known-insecure default values that must never be used outside LOCAL env.
 _INSECURE_SECRET_KEY_DEFAULT = "secret-key"
@@ -46,8 +45,7 @@ class FirstUserSettings(BaseSettings):
     ADMIN_PASSWORD: str = _INSECURE_ADMIN_PASSWORD_DEFAULT
 
 
-class TestSettings(BaseSettings):
-    ...
+class TestSettings(BaseSettings): ...
 
 
 class ClientSideCacheSettings(BaseSettings):
@@ -81,7 +79,7 @@ class CRUDAdminSettings(BaseSettings):
     CRUD_ADMIN_REDIS_SSL: bool = False
 
 
-class EnvironmentOption(str, Enum):
+class EnvironmentOption(StrEnum):
     LOCAL = "local"
     STAGING = "staging"
     PRODUCTION = "production"
@@ -125,13 +123,13 @@ class Settings(
         if v.get_secret_value() == _INSECURE_SECRET_KEY_DEFAULT:
             raise ValueError(
                 "SECRET_KEY is set to the known-insecure placeholder 'secret-key'. "
-                "Generate a strong key with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+                'Generate a strong key with: python -c "import secrets; print(secrets.token_urlsafe(32))" '
                 "and set it as the SECRET_KEY env var."
             )
         if len(v.get_secret_value()) < 32:
             raise ValueError(
                 f"SECRET_KEY must be at least 32 characters long (got {len(v.get_secret_value())}). "
-                "Use: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                'Use: python -c "import secrets; print(secrets.token_urlsafe(32))"'
             )
         return v
 
@@ -144,9 +142,7 @@ class Settings(
                 "Set a strong, unique password via the ADMIN_PASSWORD env var."
             )
         if len(v) < 12:
-            raise ValueError(
-                f"ADMIN_PASSWORD must be at least 12 characters long (got {len(v)})."
-            )
+            raise ValueError(f"ADMIN_PASSWORD must be at least 12 characters long (got {len(v)}).")
         return v
 
     @model_validator(mode="after")
@@ -160,13 +156,11 @@ class Settings(
                 )
             if "*" in self.CORS_METHODS:
                 raise ValueError(
-                    "CORS_METHODS cannot contain '*' in non-LOCAL environments. "
-                    "List explicit HTTP methods."
+                    "CORS_METHODS cannot contain '*' in non-LOCAL environments. List explicit HTTP methods."
                 )
             if "*" in self.CORS_HEADERS:
                 raise ValueError(
-                    "CORS_HEADERS cannot contain '*' in non-LOCAL environments. "
-                    "List explicit header names."
+                    "CORS_HEADERS cannot contain '*' in non-LOCAL environments. List explicit header names."
                 )
         return self
 

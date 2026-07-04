@@ -4,6 +4,7 @@ Each test gets a fresh in-memory SQLite database, a running app lifespan
 (so tables are created), and an httpx AsyncClient pointed at the app via
 ASGITransport.
 """
+
 from __future__ import annotations
 
 import asyncio

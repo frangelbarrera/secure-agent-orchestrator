@@ -1,5 +1,3 @@
-from typing import List
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -19,7 +17,7 @@ class CRUDCommandTask:
         result = await db.execute(select(CommandTask).where(CommandTask.task_id == task_id))
         return result.scalars().first()
 
-    async def get_by_agent(self, db: AsyncSession, agent_id: str) -> List[CommandTask]:
+    async def get_by_agent(self, db: AsyncSession, agent_id: str) -> list[CommandTask]:
         result = await db.execute(select(CommandTask).where(CommandTask.agent_id == agent_id))
         return list(result.scalars().all())
 

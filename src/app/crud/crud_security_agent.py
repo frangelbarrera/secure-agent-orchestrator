@@ -1,5 +1,3 @@
-from typing import List
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -19,7 +17,7 @@ class CRUDSecurityAgent:
         result = await db.execute(select(SecurityAgent).where(SecurityAgent.agent_id == agent_id))
         return result.scalars().first()
 
-    async def get_multi(self, db: AsyncSession) -> List[SecurityAgent]:
+    async def get_multi(self, db: AsyncSession) -> list[SecurityAgent]:
         result = await db.execute(select(SecurityAgent))
         return list(result.scalars().all())
 

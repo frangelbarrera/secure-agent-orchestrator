@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,8 +9,8 @@ class CommandTaskBase(BaseModel):
     command: str = Field(..., description="Command to execute")
     status: str = Field("PENDING", description="Status: PENDING, RUNNING, COMPLETED, ERROR")
     created_at: datetime = Field(..., description="Creation timestamp")
-    completed_at: Optional[datetime] = Field(None, description="Completion timestamp")
-    result: Optional[str] = Field(None, description="Result of the command execution")
+    completed_at: datetime | None = Field(None, description="Completion timestamp")
+    result: str | None = Field(None, description="Result of the command execution")
 
 
 class CommandTaskCreate(BaseModel):
@@ -23,6 +22,6 @@ class CommandTaskRead(CommandTaskBase):
 
 
 class CommandTaskUpdate(BaseModel):
-    status: Optional[str] = None
-    completed_at: Optional[datetime] = None
-    result: Optional[str] = None
+    status: str | None = None
+    completed_at: datetime | None = None
+    result: str | None = None

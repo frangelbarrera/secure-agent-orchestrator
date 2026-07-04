@@ -1,6 +1,6 @@
 import hashlib
-from datetime import datetime, timedelta, timezone
-from enum import Enum
+from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, Literal
 
 import anyio
@@ -28,7 +28,7 @@ _BCRYPT_MAX_BYTES = 72
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 
-class TokenType(str, Enum):
+class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
 
@@ -70,9 +70,7 @@ async def get_password_hash_async(password: str) -> str:
     return await anyio.to_thread.run_sync(get_password_hash, password)
 
 
-async def authenticate_user(
-    username_or_email: str, password: str, db: AsyncSession
-) -> dict[str, Any] | Literal[False]:
+async def authenticate_user(username_or_email: str, password: str, db: AsyncSession) -> dict[str, Any] | Literal[False]:
     if "@" in username_or_email:
         db_user = await crud_users.get(db=db, email=username_or_email, is_deleted=False)
     else:
@@ -93,7 +91,7 @@ async def authenticate_user(
 
 async def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta if expires_delta is not None else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire, "token_type": TokenType.ACCESS})
@@ -103,7 +101,7 @@ async def create_access_token(data: dict[str, Any], expires_delta: timedelta | N
 
 async def create_refresh_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (
+    expire = datetime.now(UTC) + (
         expires_delta if expires_delta is not None else timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     )
     to_encode.update({"exp": expire, "token_type": TokenType.REFRESH})
@@ -160,7 +158,5 @@ async def blacklist_token(token: str, db: AsyncSession) -> None:
     if exp_timestamp is None:
         return
 
-    expires_at = datetime.fromtimestamp(int(exp_timestamp), tz=timezone.utc)
-    await crud_token_blacklist.create(
-        db, object=TokenBlacklistCreate(token=token, expires_at=expires_at)
-    )
+    expires_at = datetime.fromtimestamp(int(exp_timestamp), tz=UTC)
+    await crud_token_blacklist.create(db, object=TokenBlacklistCreate(token=token, expires_at=expires_at))
