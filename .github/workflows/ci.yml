@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, fix/security-and-honesty-refactor]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install "ruff>=0.11.13"
+
+      - name: Run ruff check
+        run: ruff check src tests scripts
+
+      - name: Run ruff format check
+        run: ruff format --check src tests scripts
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        env:
+          ENVIRONMENT: local
+          SECRET_KEY: ${{ secrets.CI_SECRET_KEY || 'ci-secret-key-not-used-in-prod-32chars-minimum-padding-xx' }}
+          ADMIN_PASSWORD: "CiStrongAdminPassword123!"
+          SQLITE_URI: ":memory:"
+        run: pytest --cov=src/app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Scan requirements.txt for known CVEs
+        run: pip-audit -r requirements.txt --ignore-vuln GHSA-XXXX-XXXX-XXXX || true
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: secure-agent-orchestrator:ci
+          load: true
+
+      - name: Smoke-test the image
+        run: |
+          docker run --rm -d -p 8000:8000 \
+            -e ENVIRONMENT=local \
+            -e SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))") \
+            -e ADMIN_PASSWORD="StrongTestAdminPass123!" \
+            --name sao-ci secure-agent-orchestrator:ci
+          sleep 5
+          curl -sf http://localhost:8000/api/v1/health | grep -q healthy
+          docker stop sao-ci

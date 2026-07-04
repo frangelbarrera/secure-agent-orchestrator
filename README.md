@@ -1,233 +1,279 @@
 # Secure Agent Orchestrator
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Swagger%20UI-blue)](https://secure-agent-orchestrator.onrender.com/docs)
+[![CI](https://github.com/frangelbarrera/secure-agent-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/frangelbarrera/secure-agent-orchestrator/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-009688.svg)](https://fastapi.tiangolo.com/)
 
-> ⚠️ **Live demo may take ~30 seconds to wake up on first request** (free tier cold start). Once awake, it's fast.
+> **Status: early-stage.** This is a FastAPI control plane for registering
+> security agents and their command tasks. It is **not** a SOAR: there is no
+> command execution, no agent pull/push protocol, no sandboxing, no
+> heartbeat. See the [What this is not](#what-this-is-not) section before
+> deploying it anywhere.
 
-In today's distributed infrastructure landscape, managing remote security agents efficiently is crucial. This API addresses key challenges:
+## What this is
 
-- **Resource Efficiency**: Optimized for low-memory environments (runs smoothly on 4GB RAM systems)
-- **Security First**: JWT-based authentication ensures secure command execution across distributed agents
-- **Performance**: Async operations handle multiple concurrent agent communications without blocking
-- **Scalability**: SQLite backend provides reliable storage without complex database setup
-- **Operational Visibility**: Real-time command tracking and status monitoring for proactive security management
+A small, audited FastAPI service that:
 
-**Key Metrics:**
--  Sub-100ms response times for command execution
--  100% secure with stateless JWT authentication
--  <50MB memory footprint in production
--  Handles 1000+ concurrent agent connections
--  99.9% uptime with async error handling
+- Authenticates users with JWT (access + refresh) backed by a database
+  token blacklist so logout actually invalidates tokens.
+- Registers security agents as rows in a SQLite database.
+- Records command tasks against those agents in `PENDING` state, with
+  per-task status tracking (`PENDING`, `RUNNING`, `COMPLETED`, `ERROR`).
+- Exposes a paginated, role-aware REST API for the above.
+- Ships with a CRUDAdmin interface (disabled by default) for managing
+  `User` and `Tier` rows from a browser.
 
-## Core Capabilities
+The service is intentionally small. The codebase is ~2200 lines of
+Python, plus tests, plus a Dockerfile and a Render Blueprint.
 
-- **Centralized Agent Control**: Unified management of distributed security agents
-- **Asynchronous Command Processing**: Non-blocking execution with status tracking
-- **Lightweight Architecture**: Minimal dependencies, fast deployment
-- **Production Ready**: Built with enterprise-grade security and reliability
+## What this is not
 
-## Quick Start
+- **Not a SOAR.** The `/security-agents/{id}/command` endpoint records
+  a task; it does **not** execute it. There is no subprocess, no SSH,
+  no agent pull/push protocol. Picking up recorded tasks and acting on
+  them is out of scope for this control plane.
+- **Not production-hardened.** Although the security audit found and
+  fixed eight critical issues, the test suite is small, there is no
+  observability (no metrics, no tracing, no structured logging), and
+  the database is SQLite-on-disk with no WAL or replication.
+- **Not multi-database.** SQLite only. The Postgres and MySQL settings
+  blocks that previous versions of this repo advertised were dead code
+  and have been removed.
+- **Not distributed.** Single process, single SQLite file. Do not put
+  multiple workers behind a load balancer against the same SQLite file
+  without WAL mode and careful testing.
+
+## Quick start
 
 ```bash
-# Clone the repository
+# Clone
 git clone https://github.com/frangelbarrera/secure-agent-orchestrator.git
 cd secure-agent-orchestrator
 
-# Install dependencies (using uv - faster than pip)
-pip install uv
-uv sync
+# Create a virtualenv and install runtime + dev dependencies
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
 
-# Configure environment
-cp .env.example src/.env
-# Edit src/.env with your settings
+# Configure environment. SECRET_KEY and ADMIN_PASSWORD are required in
+# every environment; the config validator will refuse to start without
+# strong values. Generate a SECRET_KEY with:
+python -c "import secrets; print(secrets.token_urlsafe(32))"
 
-# Run the API
+cp .env.example .env
+# Edit .env: set SECRET_KEY and ADMIN_PASSWORD to real values.
+
+# Run the API (LOCAL env, so /docs is public)
 uvicorn src.app.main:app --reload
 ```
 
-Access the interactive API documentation at `http://localhost:8000/docs`
+The interactive API documentation is at `http://localhost:8000/docs`.
+
+## Functional smoke test
+
+A single-process end-to-end smoke test exercises the most security-relevant
+behaviors (401 on unauthenticated user listing, 403 for non-admin,
+`Cache-Control: private, no-store` on authed responses, register + login
+flow, 404 on the removed `/execute-command` path).
+
+```bash
+ENVIRONMENT=local \
+  SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))") \
+  ADMIN_PASSWORD="StrongTestAdminPass123!" \
+  python scripts/smoke_test.py
+```
+
+Expected output: `ALL SMOKE TESTS PASSED`.
 
 ## Configuration
 
-Create `src/.env` from the provided `.env.example`:
+All configuration is via environment variables (or a `.env` file at the
+project root). The full template is in [`.env.example`](.env.example).
 
-```env
-# Application settings
-APP_NAME="Secure Agent Orchestrator"
-SECRET_KEY="your-super-secret-key-here"
-ENVIRONMENT="local"
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `ENVIRONMENT` | yes | `local` | One of `local`, `staging`, `production`. Controls docs exposure and validator strictness. |
+| `SECRET_KEY` | yes | (none) | JWT signing key. Validator rejects the literal `"secret-key"` placeholder and any value < 32 chars. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. |
+| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` | yes | (placeholder) | First superuser bootstrap. `ADMIN_PASSWORD` validator rejects the literal `"!Ch4ng3Th1sP4ssW0rd!"` placeholder and any value < 12 chars. |
+| `SQLITE_URI` | no | `./sql_app.db` | SQLite file path. |
+| `CORS_ORIGINS` | no | `["http://localhost:3000", "http://localhost:8000"]` | Explicit origins only. `*` is rejected in non-LOCAL environments. |
+| `CORS_METHODS` | no | explicit list | `*` is rejected in non-LOCAL. |
+| `CORS_HEADERS` | no | explicit list | `*` is rejected in non-LOCAL. |
+| `CRUD_ADMIN_ENABLED` | no | `false` | Set to `true` to mount the CRUDAdmin UI at `/admin`. Pair with `CRUD_ADMIN_ALLOWED_IPS_LIST`. |
+| `CRUD_ADMIN_ALLOWED_IPS_LIST` | no | `["127.0.0.1", "::1"]` | IP allowlist for the admin UI. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | no | `30` | JWT access token TTL. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | no | `7` | JWT refresh token TTL (stored in HttpOnly cookie). |
 
-# Database
-SQLITE_URI="./db.sqlite"
+### Environment semantics
 
-# JWT settings
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
+| Environment | `/docs` | `/openapi.json` | CORS `*` allowed | CRUDAdmin default |
+|---|---|---|---|---|
+| `local` | public | public | yes (with `allow_credentials=False`) | off |
+| `staging` | superuser-only | superuser-only | no | off |
+| `production` | disabled | disabled | no | off |
 
-# Admin user (optional)
-ADMIN_USERNAME="admin"
-ADMIN_PASSWORD="secure-password-here"
-```
+## API surface
 
-## Development
+All endpoints are prefixed with `/api/v1`.
 
-### Prerequisites
-- Python 3.11+
-- pip or uv package manager
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/health` | none | Liveness probe. |
+| `POST` | `/login` | none | Exchange username + password for an access token. Refresh token set in HttpOnly cookie. |
+| `POST` | `/refresh` | refresh cookie | Exchange a refresh token for a new access token. |
+| `POST` | `/logout` | access token | Blacklist the access and refresh tokens. |
+| `POST` | `/user` | none | Register a new user. Password must satisfy the complexity validator. |
+| `GET` | `/users` | superuser | Paginated user list. |
+| `GET` | `/user/me/` | access token | Current user profile. |
+| `GET` | `/user/{username}` | access token | Lookup another user by username. |
+| `PATCH` | `/user/{username}` | access token (self) | Update profile. |
+| `DELETE` | `/user/{username}` | access token (self) | Soft-delete. |
+| `DELETE` | `/db_user/{username}` | superuser | Hard-delete. |
+| `GET` | `/user/{username}/tier` | none | Public tier lookup. |
+| `PATCH` | `/user/{username}/tier` | superuser | Assign tier. |
+| `GET` | `/security-agents/` | access token | List registered agents. |
+| `POST` | `/security-agents/{id}/command` | access token | Register a command task against an agent. **Does not execute.** |
+| `GET` | `/security-agents/{id}/task-status/{task_id}` | access token | Lookup task status. |
 
-### Local Development
+## Security model
+
+- **JWT** (`HS256`) with separate access (30 min) and refresh (7 day) tokens.
+- **Refresh token rotation** is not implemented; the refresh endpoint
+  issues a new access token without invalidating the refresh token.
+- **Token blacklist** is database-backed. On logout, both the access and
+  refresh tokens are inserted into the blacklist with their natural
+  expiry. `verify_token` checks the blacklist before accepting any token.
+- **bcrypt** with SHA-256 pre-hashing. bcrypt silently truncates inputs
+  at 72 bytes; we pre-hash with SHA-256 (32-byte digest) so any-length
+  passwords are protected. bcrypt runs in a thread pool so it does not
+  block the event loop.
+- **CORS** defaults to an explicit localhost allowlist. `*` is rejected
+  in non-LOCAL environments. `allow_credentials` is only enabled when
+  the origins list does not contain `*`.
+- **Cache-Control** is `private, no-store` on any response to a request
+  that carried an `Authorization` header, and on any error response.
+  Public responses (health, public listings) get `public, max-age=60`.
+  This prevents a CDN or shared proxy from serving one user's
+  authenticated response to another.
+- **Password complexity** is enforced by a `field_validator` on
+  `UserCreate.password`: at least one lowercase, one uppercase, one
+  digit, one special character, 8–128 chars.
+- **Timing oracle**: `authenticate_user` runs a dummy bcrypt
+  verification against a fixed invalid hash when the username does not
+  exist, so the response time does not leak user existence.
+
+### Known limitations
+
+- No rate limiting. The previous `RateLimiter` was a stub that always
+  returned `False`; it has been removed. The `POST /login` and
+  `POST /user` endpoints are not protected against brute force. Put a
+  rate limiter (Cloudflare, nginx, or a real Redis-backed limiter) in
+  front of the service if you expose it publicly.
+- No CSRF protection on cookie-based endpoints. The refresh token is
+  set with `SameSite=Lax`, which mitigates the most common CSRF vector
+  but is not a complete defense.
+- SQLite only. Foreign keys are not enforced at the driver level
+  (`PRAGMA foreign_keys=ON` is not set). Soft-delete is implemented
+  per-model via `is_deleted`, but not consistently across all models.
+- No structured logging. The `logging` module is used directly; output
+  is plain text, not JSON.
+
+## Testing
+
 ```bash
-# Install dependencies
-uv sync
-
-# Run with auto-reload
-uvicorn src.app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Run tests (if implemented)
+# Run unit + smoke tests
 pytest
+
+# With coverage
+pytest --cov=src/app --cov-report=term-missing
 ```
 
-### API Documentation
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+The test suite lives in `tests/` and `scripts/smoke_test.py`. The smoke
+test is also runnable standalone (see [Functional smoke test](#functional-smoke-test)).
 
-## Architecture Details
+## Deployment
 
-### Core Components
+### Render
 
-**SecurityAgent Model**
-- Primary key: agent_id (UUID)
-- Network info: hostname, ip_address
-- Status tracking: online/offline with timestamps
+The [`render.yaml`](render.yaml) Blueprint describes a single web service
+on the free tier. SECRET_KEY and ADMIN_PASSWORD are generated at first
+deploy. CORS is set to the demo URL only.
 
-**CommandTask Model**
-- Execution pipeline: PENDING → RUNNING → COMPLETED/ERROR
-- Command storage with result tracking
-- Foreign key relationship to SecurityAgent
-
-### Technology Stack
-
-- **API Framework**: FastAPI with automatic OpenAPI generation
-- **Database ORM**: SQLAlchemy 2.0 with async support
-- **Authentication**: JWT tokens with refresh capability
-- **JWT Library**: Python-JOSE for token handling
-- **Data Validation**: Pydantic V2 models
-- **Async Runtime**: asyncio with uvloop for performance
-- **Storage**: SQLite for lightweight, embedded database
-
-## API Reference
-
-### Authentication
-All agent management endpoints require JWT Bearer token authentication.
-
-### Core Endpoints
-
-```
-GET  /api/v1/security-agents
-     → List all registered security agents
-
-POST /api/v1/security-agents/{agent_id}/execute-command
-     → Send command to specific agent
-     Body: {"command": "string"}
-
-GET  /api/v1/security-agents/{agent_id}/task-status/{task_id}
-     → Retrieve command execution status and results
-```
-
-### System Endpoints
-
-```
-GET  /api/v1/health → Basic health check
-GET  /api/v1/ready  → Database connectivity check
-POST /api/v1/login  → Obtain JWT access token
-```
-
-## Production Deployment
-
-### Docker Deployment
 ```bash
-# Build the image
-docker build -t secure-agent-orchestrator .
-
-# Run with environment file
-docker run -d \
-  --name secure-agent-orchestrator \
-  -p 8000:8000 \
-  -v $(pwd)/data:/app/data \
-  --env-file .env \
-  secure-agent-orchestrator
-
-# Check health
-curl http://localhost:8000/api/v1/health
+# From the Render dashboard, create a new Blueprint and point it at
+# this repository. Render will read render.yaml and provision the service.
 ```
 
-### Production Security Checklist
-- [ ] Set `SECRET_KEY` to a random 32+ character string
-- [ ] Change `ADMIN_PASSWORD` from default
-- [ ] Set `ENVIRONMENT=production`
-- [ ] Set `SESSION_SECURE_COOKIES=true`
-- [ ] Restrict `CORS_ORIGINS` to your actual domains
-- [ ] Set `CRUD_ADMIN_ALLOWED_IPS_LIST` to restrict admin access
-- [ ] Use HTTPS (reverse proxy with nginx or Caddy)
+### Docker
 
-### System Requirements
-- Minimum 4GB RAM
-- Python 3.11+
-- SQLite (no additional setup required)
+```bash
+docker build -t secure-agent-orchestrator .
+docker run --rm -p 8000:8000 \
+  -e ENVIRONMENT=production \
+  -e SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))") \
+  -e ADMIN_PASSWORD="StrongAdminPassword123!" \
+  -e CORS_ORIGINS='["https://your-frontend.example.com"]' \
+  secure-agent-orchestrator
+```
 
-## Security Features
+The image runs as a non-root user (`appuser`, uid 1000), includes a
+`HEALTHCHECK` against `/api/v1/health`, and excludes dev dependencies
+from the final stage.
 
-- **JWT Authentication**: Stateless token-based security
-- **Input Validation**: Comprehensive data sanitization
-- **Async Security**: Non-blocking authentication checks
-- **Secure Defaults**: Production-ready security configurations
+## Project structure
+
+```
+src/
+├── app/
+│   ├── admin/           # CRUDAdmin integration (disabled by default)
+│   ├── api/
+│   │   ├── dependencies.py    # get_current_user, get_current_superuser
+│   │   └── v1/
+│   │       ├── health.py
+│   │       ├── login.py       # /login, /refresh
+│   │       ├── logout.py      # /logout (blacklist)
+│   │       ├── users.py       # /user, /users
+│   │       ├── security_agents.py  # /security-agents, /command
+│   │       └── tiers.py
+│   ├── core/
+│   │   ├── config.py    # pydantic-settings with validators
+│   │   ├── security.py  # JWT, bcrypt, blacklist helpers
+│   │   ├── setup.py     # app factory, lifespan, middleware
+│   │   ├── db/          # async engine, Base, token_blacklist CRUD
+│   │   └── exceptions/  # HTTP exception classes
+│   ├── crud/            # one FastCRUD module per model
+│   ├── models/          # SQLAlchemy 2.0 MappedAsDataclass models
+│   ├── schemas/         # pydantic v2 schemas
+│   ├── middleware/      # ClientCacheMiddleware
+│   └── main.py          # app instance
+├── migrations/          # Alembic (env.py only; no migration files yet)
+└── scripts/
+    ├── create_first_superuser.py
+    └── create_first_tier.py
+scripts/
+└── smoke_test.py        # end-to-end functional test
+tests/
+└── test_*.py            # unit tests
+```
+
+## Audit history
+
+This repository underwent a full security audit in July 2026. The audit
+found and fixed eight critical issues, including hardcoded JWT secret and
+admin password defaults, CORS `*` + credentials, a stub rate limiter
+shipped as a feature, a no-op cache decorator shipped as a feature, a
+fake `/execute-command` endpoint with a broken background task, and
+publicly readable user listings. The full audit worklog is available on
+request. See [`CHANGELOG.md`](CHANGELOG.md) for the version history.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). In short: do not open pull
+requests that weaken security, do not reintroduce `*` to CORS, do not
+ship features that are not wired up, and do not make quantitative claims
+in the README without evidence.
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Live Demo
-
-A live demo is available at: **https://secure-agent-orchestrator.onrender.com/docs**
-
-### What you can try:
-
-1. **Health check** (no auth required):
-   ```bash
-   curl https://secure-agent-orchestrator.onrender.com/api/v1/health
-   ```
-
-2. **Swagger UI** (interactive):
-   - Visit https://secure-agent-orchestrator.onrender.com/docs
-   - Explore all endpoints visually
-   - Try the `/api/v1/health` and `/api/v1/ready` endpoints directly from the browser
-
-3. **Login** (default admin credentials are randomized per deploy):
-   ```bash
-   # Get JWT token (check Render dashboard for ADMIN_PASSWORD)
-   curl -X POST https://secure-agent-orchestrator.onrender.com/api/v1/login \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d "username=admin&password=YOUR_ADMIN_PASSWORD"
-   ```
-
-### Demo limitations:
-- **Free tier cold start**: ~30s wake-up on first request after 15 min idle
-- **Ephemeral database**: SQLite data resets on each deploy
-- **Admin panel disabled** in demo for security
-- **Rate limited**: 10 requests/hour per IP
-
-## Contact
-
-**Frangel Barrera**
-- GitHub: [@frangelbarrera](https://github.com/frangelbarrera)
-- Project Repository: [secure-agent-orchestrator](https://github.com/frangelbarrera/secure-agent-orchestrator)
+MIT. See [`LICENSE`](LICENSE).
