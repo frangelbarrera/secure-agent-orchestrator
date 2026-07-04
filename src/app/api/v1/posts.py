@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...api.dependencies import get_current_superuser, get_current_user
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import ForbiddenException, NotFoundException
-from ...core.utils.cache import cache
 from ...crud.crud_posts import crud_posts
 from ...crud.crud_users import crud_users
 from ...schemas.post import PostCreate, PostCreateInternal, PostRead, PostUpdate
@@ -44,11 +43,6 @@ async def write_post(
 
 
 @router.get("/{username}/posts", response_model=PaginatedListResponse[PostRead])
-@cache(
-    key_prefix="{username}_posts:page_{page}:items_per_page:{items_per_page}",
-    resource_id_name="username",
-    expiration=60,
-)
 async def read_posts(
     request: Request,
     username: str,
@@ -73,7 +67,6 @@ async def read_posts(
 
 
 @router.get("/{username}/post/{id}", response_model=PostRead)
-@cache(key_prefix="{username}_post_cache", resource_id_name="id")
 async def read_post(
     request: Request, username: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, Any]:
@@ -91,7 +84,6 @@ async def read_post(
 
 
 @router.patch("/{username}/post/{id}")
-@cache("{username}_post_cache", resource_id_name="id", pattern_to_invalidate_extra=["{username}_posts:*"])
 async def patch_post(
     request: Request,
     username: str,
@@ -116,7 +108,6 @@ async def patch_post(
 
 
 @router.delete("/{username}/post/{id}")
-@cache("{username}_post_cache", resource_id_name="id", to_invalidate_extra={"{username}_posts": "{username}"})
 async def erase_post(
     request: Request,
     username: str,
@@ -141,7 +132,6 @@ async def erase_post(
 
 
 @router.delete("/{username}/db_post/{id}", dependencies=[Depends(get_current_superuser)])
-@cache("{username}_post_cache", resource_id_name="id", to_invalidate_extra={"{username}_posts": "{username}"})
 async def erase_db_post(
     request: Request, username: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
