@@ -1,8 +1,13 @@
 import os
 from enum import Enum
 
-from pydantic import SecretStr, computed_field
+from pydantic import SecretStr, field_validator, model_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Known-insecure default values that must never be used outside LOCAL env.
+_INSECURE_SECRET_KEY_DEFAULT = "secret-key"
+_INSECURE_ADMIN_PASSWORD_DEFAULT = "!Ch4ng3Th1sP4ssW0rd!"
 
 
 class AppSettings(BaseSettings):
@@ -15,7 +20,9 @@ class AppSettings(BaseSettings):
 
 
 class CryptSettings(BaseSettings):
-    SECRET_KEY: SecretStr = SecretStr("secret-key")
+    # No default. LOCAL env may set SECRET_KEY explicitly; any non-LOCAL env MUST set it
+    # to a strong value. Validators below enforce this at startup.
+    SECRET_KEY: SecretStr = SecretStr(_INSECURE_SECRET_KEY_DEFAULT)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -31,80 +38,20 @@ class SQLiteSettings(DatabaseSettings):
     SQLITE_ASYNC_PREFIX: str = "sqlite+aiosqlite:///"
 
 
-class MySQLSettings(DatabaseSettings):
-    MYSQL_USER: str = "username"
-    MYSQL_PASSWORD: str = "password"
-    MYSQL_SERVER: str = "localhost"
-    MYSQL_PORT: int = 5432
-    MYSQL_DB: str = "dbname"
-    MYSQL_SYNC_PREFIX: str = "mysql://"
-    MYSQL_ASYNC_PREFIX: str = "mysql+aiomysql://"
-    MYSQL_URL: str | None = None
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def MYSQL_URI(self) -> str:
-        credentials = f"{self.MYSQL_USER}:{self.MYSQL_PASSWORD}"
-        location = f"{self.MYSQL_SERVER}:{self.MYSQL_PORT}/{self.MYSQL_DB}"
-        return f"{credentials}@{location}"
-
-
-class PostgresSettings(DatabaseSettings):
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
-    POSTGRES_SERVER: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "postgres"
-    POSTGRES_SYNC_PREFIX: str = "postgresql://"
-    POSTGRES_ASYNC_PREFIX: str = "postgresql+asyncpg://"
-    POSTGRES_URL: str | None = None
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def POSTGRES_URI(self) -> str:
-        credentials = f"{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-        location = f"{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        return f"{credentials}@{location}"
-
-
 class FirstUserSettings(BaseSettings):
     ADMIN_NAME: str = "admin"
     ADMIN_EMAIL: str = "admin@admin.com"
     ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "!Ch4ng3Th1sP4ssW0rd!"
+    # No default. LOCAL env may keep the placeholder; any non-LOCAL env MUST override it.
+    ADMIN_PASSWORD: str = _INSECURE_ADMIN_PASSWORD_DEFAULT
 
 
 class TestSettings(BaseSettings):
     ...
 
 
-class RedisCacheSettings(BaseSettings):
-    REDIS_CACHE_HOST: str = "localhost"
-    REDIS_CACHE_PORT: int = 6379
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def REDIS_CACHE_URL(self) -> str:
-        return f"redis://{self.REDIS_CACHE_HOST}:{self.REDIS_CACHE_PORT}"
-
-
 class ClientSideCacheSettings(BaseSettings):
     CLIENT_CACHE_MAX_AGE: int = 60
-
-
-class RedisQueueSettings(BaseSettings):
-    REDIS_QUEUE_HOST: str = "localhost"
-    REDIS_QUEUE_PORT: int = 6379
-
-
-class RedisRateLimiterSettings(BaseSettings):
-    REDIS_RATE_LIMIT_HOST: str = "localhost"
-    REDIS_RATE_LIMIT_PORT: int = 6379
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def REDIS_RATE_LIMIT_URL(self) -> str:
-        return f"redis://{self.REDIS_RATE_LIMIT_HOST}:{self.REDIS_RATE_LIMIT_PORT}"
 
 
 class DefaultRateLimitSettings(BaseSettings):
@@ -113,10 +60,11 @@ class DefaultRateLimitSettings(BaseSettings):
 
 
 class CRUDAdminSettings(BaseSettings):
-    CRUD_ADMIN_ENABLED: bool = True
+    # Default-off in any non-LOCAL environment. Even in LOCAL it is opt-in for safety.
+    CRUD_ADMIN_ENABLED: bool = False
     CRUD_ADMIN_MOUNT_PATH: str = "/admin"
 
-    CRUD_ADMIN_ALLOWED_IPS_LIST: list[str] | None = None
+    CRUD_ADMIN_ALLOWED_IPS_LIST: list[str] | None = ["127.0.0.1", "::1"]
     CRUD_ADMIN_ALLOWED_NETWORKS_LIST: list[str] | None = None
     CRUD_ADMIN_MAX_SESSIONS: int = 10
     CRUD_ADMIN_SESSION_TIMEOUT: int = 1440
@@ -144,22 +92,19 @@ class EnvironmentSettings(BaseSettings):
 
 
 class CORSSettings(BaseSettings):
-    CORS_ORIGINS: list[str] = ["*"]
-    CORS_METHODS: list[str] = ["*"]
-    CORS_HEADERS: list[str] = ["*"]
+    # Restrictive defaults. `*` is forbidden in non-LOCAL environments (see validator below).
+    CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
+    CORS_METHODS: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    CORS_HEADERS: list[str] = ["Authorization", "Content-Type", "Accept"]
 
 
 class Settings(
     AppSettings,
     SQLiteSettings,
-    PostgresSettings,
     CryptSettings,
     FirstUserSettings,
     TestSettings,
-    RedisCacheSettings,
     ClientSideCacheSettings,
-    RedisQueueSettings,
-    RedisRateLimiterSettings,
     DefaultRateLimitSettings,
     CRUDAdminSettings,
     EnvironmentSettings,
@@ -171,6 +116,59 @@ class Settings(
         case_sensitive=True,
         extra="ignore",
     )
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def _validate_secret_key(cls, v: SecretStr) -> SecretStr:
+        # Always reject the known-insecure default at the field level so even LOCAL
+        # developers get a loud warning if they forget to override it.
+        if v.get_secret_value() == _INSECURE_SECRET_KEY_DEFAULT:
+            raise ValueError(
+                "SECRET_KEY is set to the known-insecure placeholder 'secret-key'. "
+                "Generate a strong key with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" "
+                "and set it as the SECRET_KEY env var."
+            )
+        if len(v.get_secret_value()) < 32:
+            raise ValueError(
+                f"SECRET_KEY must be at least 32 characters long (got {len(v.get_secret_value())}). "
+                "Use: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        return v
+
+    @field_validator("ADMIN_PASSWORD")
+    @classmethod
+    def _validate_admin_password(cls, v: str) -> str:
+        if v == _INSECURE_ADMIN_PASSWORD_DEFAULT:
+            raise ValueError(
+                "ADMIN_PASSWORD is set to the known-insecure placeholder. "
+                "Set a strong, unique password via the ADMIN_PASSWORD env var."
+            )
+        if len(v) < 12:
+            raise ValueError(
+                f"ADMIN_PASSWORD must be at least 12 characters long (got {len(v)})."
+            )
+        return v
+
+    @model_validator(mode="after")
+    def _validate_cors_for_environment(self) -> "Settings":
+        if self.ENVIRONMENT != EnvironmentOption.LOCAL:
+            if "*" in self.CORS_ORIGINS:
+                raise ValueError(
+                    "CORS_ORIGINS cannot contain '*' in non-LOCAL environments "
+                    f"(current ENVIRONMENT={self.ENVIRONMENT.value}). "
+                    "List explicit origins, e.g. ['https://app.example.com']."
+                )
+            if "*" in self.CORS_METHODS:
+                raise ValueError(
+                    "CORS_METHODS cannot contain '*' in non-LOCAL environments. "
+                    "List explicit HTTP methods."
+                )
+            if "*" in self.CORS_HEADERS:
+                raise ValueError(
+                    "CORS_HEADERS cannot contain '*' in non-LOCAL environments. "
+                    "List explicit header names."
+                )
+        return self
 
 
 settings = Settings()
