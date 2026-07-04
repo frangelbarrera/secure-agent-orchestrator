@@ -1,3 +1,9 @@
+# Render Blueprint for secure-agent-orchestrator.
+#
+# This file describes a single web service. It is intended to be wired into
+# Render's Blueprint deployments. Review every value before deploying for
+# real; in particular, SECRET_KEY and ADMIN_PASSWORD are generated once at
+# first deploy and never shown again — keep them safe.
 services:
   - type: web
     name: secure-agent-orchestrator
@@ -5,21 +11,44 @@ services:
     plan: free
     region: oregon
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn src.app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+    startCommand: gunicorn src.app.main:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
     healthCheckPath: /api/v1/health
     autoDeploy: true
     envVars:
+      # ENVIRONMENT controls docs/openapi exposure and the strictness of the
+      # config validators. Use 'staging' for the live demo; 'production' for
+      # real deployments. Never 'local' on a public URL.
       - key: ENVIRONMENT
         value: staging
+
+      # Cryptography. generateValue produces a 32-byte random string at first
+      # deploy; the config validator enforces >= 32 chars and rejects the
+      # known-insecure 'secret-key' placeholder.
       - key: SECRET_KEY
         generateValue: true
-      - key: SQLITE_URI
-        value: ./db.sqlite
+
+      # First admin bootstrap. The validator rejects the known-insecure
+      # '!Ch4ng3Th1sP4ssW0rd!' placeholder and any value shorter than 12 chars.
       - key: ADMIN_USERNAME
         value: admin
+      - key: ADMIN_EMAIL
+        value: admin@example.com
       - key: ADMIN_PASSWORD
         generateValue: true
+
+      # SQLite database file on the container's ephemeral filesystem.
+      # Render's free tier does not include a persistent disk, so the DB is
+      # rebuilt on every cold start. Use a managed Postgres add-on if you
+      # need persistence (out of scope for this control plane).
+      - key: SQLITE_URI
+        value: ./db.sqlite
+
+      # CORS — explicit origins only. The validator rejects '*' in non-LOCAL
+      # environments. Replace the example below with the real frontend URL
+      # before going to production.
       - key: CORS_ORIGINS
-        value: '["*"]'
+        value: '["https://secure-agent-orchestrator.onrender.com"]'
+
+      # CRUDAdmin is disabled by default. Enable it only behind an IP allowlist.
       - key: CRUD_ADMIN_ENABLED
         value: "false"

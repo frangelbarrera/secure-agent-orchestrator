@@ -1,20 +1,25 @@
+"""Create the first tier in the database, idempotently.
+
+Run with:
+    ENVIRONMENT=local SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))") \
+    ADMIN_PASSWORD="StrongTestAdminPass123!" \
+    venv/bin/python -m src.scripts.create_first_tier
+"""
 import asyncio
 import logging
 
 from sqlalchemy import select
 
-from ..app.core.config import config
-from ..app.core.db.database import AsyncSession, local_session
-from ..app.models.tier import Tier
+from ..app.core.config import settings
+from ..app.core.db.database import AsyncSession, Base, async_engine, local_session
+from ..app.models.tier import Tier  # noqa: F401  (register model with Base.metadata)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-async def create_first_tier(session: AsyncSession) -> None:
+async def create_first_tier(session: AsyncSession, tier_name: str = "free") -> None:
     try:
-        tier_name = config("TIER_NAME", default="free")
-
         query = select(Tier).where(Tier.name == tier_name)
         result = await session.execute(query)
         tier = result.scalar_one_or_none()
@@ -22,20 +27,24 @@ async def create_first_tier(session: AsyncSession) -> None:
         if tier is None:
             session.add(Tier(name=tier_name))
             await session.commit()
-            logger.info(f"Tier '{tier_name}' created successfully.")
-
+            logger.info("Tier '%s' created successfully.", tier_name)
         else:
-            logger.info(f"Tier '{tier_name}' already exists.")
+            logger.info("Tier '%s' already exists.", tier_name)
 
     except Exception as e:
-        logger.error(f"Error creating tier: {e}")
+        logger.error("Error creating tier: %s", e)
+        raise
 
 
-async def main():
+async def main() -> None:
+    # Ensure the schema exists before inserting. The app's lifespan normally
+    # does this, but standalone scripts do not run the lifespan.
+    async with async_engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
+
     async with local_session() as session:
-        await create_first_tier(session)
+        await create_first_tier(session, tier_name="free")
 
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
