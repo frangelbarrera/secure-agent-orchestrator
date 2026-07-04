@@ -23,8 +23,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code. The .dockerignore in the repo root excludes .env,
 # .git, __pycache__, tests, scripts, and other files that must not ship.
+# Note: alembic.ini lives at src/alembic.ini in the repo, so it is copied
+# as part of src/ — no separate COPY line is needed.
 COPY src ./src
-COPY alembic.ini ./alembic.ini
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -33,11 +34,12 @@ USER appuser
 # Expose port (Render assigns the actual port via $PORT env var)
 EXPOSE 8000
 
-# Health check using curl, which is already present in python:3.11-slim.
-# Falls back to the PORT env var if set, otherwise 8000.
+# Health check. Falls back to the PORT env var if set, otherwise 8000.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\",\"8000\")}/api/v1/health').read()" || exit 1
 
 # Run with gunicorn + uvicorn workers for production.
 # Uses $PORT env var (Render sets this automatically).
-CMD gunicorn src.app.main:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT:-8000}
+# Shell form via /bin/sh -c so ${PORT:-8000} expansion works while still
+# satisfying the JSONArgsRecommended lint.
+CMD ["/bin/sh", "-c", "exec gunicorn src.app.main:app -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT:-8000}"]

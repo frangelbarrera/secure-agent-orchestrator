@@ -27,6 +27,61 @@ A small, audited FastAPI service that:
 The service is intentionally small. The codebase is ~2200 lines of
 Python, plus tests, plus a Dockerfile and a Render Blueprint.
 
+## Screenshots
+
+The following screenshots were captured from a local instance running
+with `ENVIRONMENT=local` and a freshly generated `SECRET_KEY`. They
+show the actual UI and API responses, not mockups.
+
+### Swagger UI (`/docs`)
+
+Interactive API documentation. In `local` it is public; in `staging`
+it requires superuser auth; in `production` it is disabled entirely.
+
+![Swagger UI](docs/screenshots/01-swagger-ui.png)
+
+### ReDoc (`/redoc`)
+
+Alternative read-only documentation renderer.
+
+![ReDoc UI](docs/screenshots/05-redoc-ui.png)
+
+### Health endpoint (`GET /api/v1/health`)
+
+Public liveness probe, no auth required.
+
+![Health endpoint](docs/screenshots/02-health-endpoint.png)
+
+### 401 on unauthenticated `GET /api/v1/users`
+
+The user listing endpoint requires superuser auth. An unauthenticated
+request gets a 401 with `Cache-Control: private, no-store` (visible in
+the response headers when inspected via browser devtools).
+
+![401 on /users](docs/screenshots/04-users-401-unauthorized.png)
+
+### OpenAPI schema (`/openapi.json`)
+
+The full OpenAPI 3.1 schema exposed as JSON.
+
+![OpenAPI schema](docs/screenshots/03-openapi-schema.png)
+
+### Functional smoke test
+
+The `scripts/smoke_test.py` script exercises the security-critical
+flows end-to-end. All checks pass.
+
+![Smoke test output](docs/screenshots/06-smoke-test-output.png)
+
+### Test & coverage report
+
+29 pytest tests covering config validators, password complexity, bcrypt
+pre-hash boundary, and the security-critical API flows. 73% line
+coverage of `src/app`; the critical modules (config, security,
+middleware, models, schemas, db) are at 90–100%.
+
+![Test & coverage report](docs/screenshots/07-test-coverage.png)
+
 ## What this is not
 
 - **Not a SOAR.** The `/security-agents/{id}/command` endpoint records
