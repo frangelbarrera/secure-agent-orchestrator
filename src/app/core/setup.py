@@ -31,9 +31,6 @@ async def create_tables() -> None:
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
 
 
-# No Redis pools needed
-
-
 # -------------- application --------------
 async def set_threadpool_tokens(number_of_tokens: int = 100) -> None:
     limiter = anyio.to_thread.current_default_thread_limiter()
@@ -70,7 +67,9 @@ def lifespan_factory(
             yield
 
         finally:
-            pass
+            # Release the SQLAlchemy async engine connection pool on shutdown
+            # so workers do not leak sockets across reloads in production.
+            await engine.dispose()
 
     return lifespan
 
@@ -89,42 +88,17 @@ def create_application(
     lifespan: Callable[[FastAPI], _AsyncGeneratorContextManager[Any]] | None = None,
     **kwargs: Any,
 ) -> FastAPI:
-    """Creates and configures a FastAPI application based on the provided settings.
+    """Create and configure a FastAPI application based on the provided settings.
 
-    This function initializes a FastAPI application and configures it with various settings
-    and handlers based on the type of the `settings` object provided.
+    The function configures the FastAPI application with the following features
+    based on the provided settings:
 
-    Parameters
-    ----------
-    router : APIRouter
-        The APIRouter object containing the routes to be included in the FastAPI application.
-
-    settings
-        An instance representing the settings for configuring the FastAPI application.
-        It determines the configuration applied:
-
-        - AppSettings: Configures basic app metadata like name, description, contact, and license info.
-        - DatabaseSettings: Adds event handlers for initializing database tables during startup.
-        - ClientSideCacheSettings: Integrates middleware for client-side caching.
-        - CORSSettings: Integrates CORS middleware with specified origins.
-        - EnvironmentSettings: Conditionally sets documentation URLs and integrates custom routes for API documentation
-          based on the environment type.
-
-    create_tables_on_start : bool
-        A flag to indicate whether to create database tables on application startup.
-        Defaults to True.
-
-    **kwargs
-        Additional keyword arguments passed directly to the FastAPI constructor.
-
-    Returns
-    -------
-    FastAPI
-        A fully configured FastAPI application instance.
-
-    The function configures the FastAPI application with different features and behaviors
-    based on the provided settings. It includes setting up database connections, client-side caching, and customizing the API documentation
-    based on the environment settings.
+    - AppSettings: basic app metadata (title, description, contact, license).
+    - DatabaseSettings: event handlers for initializing database tables on startup.
+    - ClientSideCacheSettings: middleware for client-side caching.
+    - CORSSettings: CORS middleware with explicit origins.
+    - EnvironmentSettings: conditionally sets documentation URLs and integrates
+      custom routes for API documentation based on the environment type.
     """
     # --- before creating application ---
     if isinstance(settings, AppSettings):
@@ -137,7 +111,10 @@ def create_application(
         kwargs.update(to_update)
 
     if isinstance(settings, EnvironmentSettings):
-        kwargs.update({"docs_url": None, "redoc_url": None, "openapi_url": None})
+        # In production, docs and the openapi schema are completely disabled.
+        # In staging they are gated behind superuser auth (see below).
+        if settings.ENVIRONMENT == EnvironmentOption.PRODUCTION:
+            kwargs.update({"docs_url": None, "redoc_url": None, "openapi_url": None})
 
     # Use custom lifespan if provided, otherwise use default factory
     if lifespan is None:
@@ -150,10 +127,15 @@ def create_application(
         application.add_middleware(ClientCacheMiddleware, max_age=settings.CLIENT_CACHE_MAX_AGE)
 
     if isinstance(settings, CORSSettings):
+        # Only allow credentials when origins are explicit (never with '*').
+        # The config validator already rejects '*' in non-LOCAL environments;
+        # here we additionally disable allow_credentials whenever '*'
+        # appears in CORS_ORIGINS, as a defense-in-depth measure.
+        allow_credentials = "*" not in settings.CORS_ORIGINS
         application.add_middleware(
             CORSMiddleware,
             allow_origins=settings.CORS_ORIGINS,
-            allow_credentials=True,
+            allow_credentials=allow_credentials,
             allow_methods=settings.CORS_METHODS,
             allow_headers=settings.CORS_HEADERS,
         )
