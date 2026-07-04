@@ -1,6 +1,4 @@
-import asyncio
 import uuid
-from datetime import datetime, UTC
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,44 +20,37 @@ async def get_security_agents(db: AsyncSession = Depends(async_get_db)):
     return agents
 
 
-@router.post("/{agent_id}/execute-command", response_model=dict, dependencies=[Depends(get_current_user)])
-async def execute_command(agent_id: str, command: CommandTaskCreate, db: AsyncSession = Depends(async_get_db)):
-    # Validate agent exists
+@router.post("/{agent_id}/command", response_model=CommandTaskRead, status_code=201,
+             dependencies=[Depends(get_current_user)])
+async def register_command(
+    agent_id: str,
+    command: CommandTaskCreate,
+    db: AsyncSession = Depends(async_get_db),
+):
+    """Register a command task against a security agent.
+
+    The task is stored in PENDING state. This endpoint does NOT execute
+    the command: there is no subprocess, no shell, no agent pull/push
+    protocol. The recorded task is intended to be picked up by an
+    external agent runner (out of scope for this control plane).
+
+    A future revision may introduce a real execution backend with
+    sandboxing, timeout and allowlist controls. Until then, this
+    endpoint is a registry, not an executor.
+    """
     agent = await crud_security_agent.get(db, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Security agent not found")
 
-    # Generate task_id
     task_id = str(uuid.uuid4())
-
-    # Create task
     task = await crud_command_task.create(db, command, agent_id, task_id)
-
-    # Simulate async execution
-    asyncio.create_task(simulate_command_execution(db, task_id))
-
-    return {"task_id": task_id}
+    return task
 
 
-@router.get("/{agent_id}/task-status/{task_id}", response_model=CommandTaskRead, dependencies=[Depends(get_current_user)])
+@router.get("/{agent_id}/task-status/{task_id}", response_model=CommandTaskRead,
+            dependencies=[Depends(get_current_user)])
 async def get_task_status(agent_id: str, task_id: str, db: AsyncSession = Depends(async_get_db)):
     task = await crud_command_task.get(db, task_id)
     if not task or task.agent_id != agent_id:
         raise HTTPException(status_code=404, detail="Command task not found")
     return task
-
-
-async def simulate_command_execution(db: AsyncSession, task_id: str):
-    # Simulate execution
-    await asyncio.sleep(5)
-
-    # Update task status
-    task = await crud_command_task.get(db, task_id)
-    if task:
-        from ...schemas.command_task import CommandTaskUpdate
-        update_data = CommandTaskUpdate(
-            status="COMPLETED",
-            result="Command executed successfully",
-            completed_at=datetime.now(UTC).replace(tzinfo=None)
-        )
-        await crud_command_task.update(db, task, update_data)
