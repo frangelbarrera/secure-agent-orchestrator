@@ -1,7 +1,9 @@
-from datetime import UTC, datetime, timedelta
+import hashlib
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Literal
 
+import anyio
 import bcrypt
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -18,6 +20,11 @@ ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
+# bcrypt truncates passwords at 72 bytes silently. We pre-hash with SHA-256
+# (deterministic, fixed 32-byte output) so any-length passwords are protected
+# against silent truncation without losing bcrypt's adaptive cost property.
+_BCRYPT_MAX_BYTES = 72
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 
@@ -26,23 +33,56 @@ class TokenType(str, Enum):
     REFRESH = "refresh"
 
 
+def _prehash_password(password: str) -> bytes:
+    """Pre-hash a password with SHA-256 before passing it to bcrypt.
+
+    bcrypt silently truncates inputs longer than 72 bytes. Pre-hashing with
+    SHA-256 yields a fixed 32-byte digest (encoded as hex) that always fits
+    within bcrypt's limit, while preserving bcrypt's adaptive cost.
+    """
+    return hashlib.sha256(password.encode("utf-8")).hexdigest().encode("utf-8")
+
+
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
-    correct_password: bool = bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
-    return correct_password
+    # Run bcrypt in the default thread pool so it does not block the event loop.
+    # A single bcrypt.checkpw call at cost=12 takes ~250ms, which is enough to
+    # stall an async worker under modest login concurrency.
+    def _check() -> bool:
+        try:
+            return bcrypt.checkpw(_prehash_password(plain_password), hashed_password.encode())
+        except (ValueError, TypeError):
+            return False
+
+    return await anyio.to_thread.run_sync(_check)
 
 
 def get_password_hash(password: str) -> str:
-    hashed_password: str = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    """Hash a password synchronously. Intended to be wrapped in a thread.
+
+    Kept synchronous because the CRUD layer currently calls it inline; once
+    that call site is made async, prefer the async helper below.
+    """
+    hashed_password: str = bcrypt.hashpw(_prehash_password(password), bcrypt.gensalt()).decode()
     return hashed_password
 
 
-async def authenticate_user(username_or_email: str, password: str, db: AsyncSession) -> dict[str, Any] | Literal[False]:
+async def get_password_hash_async(password: str) -> str:
+    return await anyio.to_thread.run_sync(get_password_hash, password)
+
+
+async def authenticate_user(
+    username_or_email: str, password: str, db: AsyncSession
+) -> dict[str, Any] | Literal[False]:
     if "@" in username_or_email:
         db_user = await crud_users.get(db=db, email=username_or_email, is_deleted=False)
     else:
         db_user = await crud_users.get(db=db, username=username_or_email, is_deleted=False)
 
+    # Constant-time-ish: always run bcrypt even when the user does not exist,
+    # so the response time does not leak whether the username is registered.
+    # We hash a dummy password so the bcrypt cost is paid either way.
     if not db_user:
+        await verify_password(password, "$2b$12$" + "0" * 53)
         return False
 
     if not await verify_password(password, db_user["hashed_password"]):
@@ -53,10 +93,9 @@ async def authenticate_user(username_or_email: str, password: str, db: AsyncSess
 
 async def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(UTC).replace(tzinfo=None) + expires_delta
-    else:
-        expire = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + (
+        expires_delta if expires_delta is not None else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode.update({"exp": expire, "token_type": TokenType.ACCESS})
     encoded_jwt: str = jwt.encode(to_encode, SECRET_KEY.get_secret_value(), algorithm=ALGORITHM)
     return encoded_jwt
@@ -64,31 +103,22 @@ async def create_access_token(data: dict[str, Any], expires_delta: timedelta | N
 
 async def create_refresh_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.now(UTC).replace(tzinfo=None) + expires_delta
-    else:
-        expire = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + (
+        expires_delta if expires_delta is not None else timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    )
     to_encode.update({"exp": expire, "token_type": TokenType.REFRESH})
     encoded_jwt: str = jwt.encode(to_encode, SECRET_KEY.get_secret_value(), algorithm=ALGORITHM)
     return encoded_jwt
 
 
 async def verify_token(token: str, expected_token_type: TokenType, db: AsyncSession) -> TokenData | None:
-    """Verify a JWT token and return TokenData if valid.
+    """Verify a JWT and return TokenData if valid.
 
-    Parameters
-    ----------
-    token: str
-        The JWT token to be verified.
-    expected_token_type: TokenType
-        The expected type of token (access or refresh)
-    db: AsyncSession
-        Database session for performing database operations.
-
-    Returns
-    -------
-    TokenData | None
-        TokenData instance if the token is valid, None otherwise.
+    Checks, in order:
+      1. The token is not in the database-backed blacklist.
+      2. The signature is valid (jose raises JWTError on tampering).
+      3. The 'exp' claim is in the future.
+      4. The 'token_type' claim matches the expected type (access vs refresh).
     """
     is_blacklisted = await crud_token_blacklist.exists(db, token=token)
     if is_blacklisted:
@@ -109,28 +139,28 @@ async def verify_token(token: str, expected_token_type: TokenType, db: AsyncSess
 
 
 async def blacklist_tokens(access_token: str, refresh_token: str, db: AsyncSession) -> None:
-    """Blacklist both access and refresh tokens.
+    """Blacklist both access and refresh tokens until their natural expiry.
 
-    Parameters
-    ----------
-    access_token: str
-        The access token to blacklist
-    refresh_token: str
-        The refresh token to blacklist
-    db: AsyncSession
-        Database session for performing database operations.
+    Tokens whose signature cannot be decoded (already expired, tampered, or
+    signed with a different key) are silently skipped: there is nothing to
+    blacklist because they will already be rejected by verify_token.
     """
-    for token in [access_token, refresh_token]:
-        payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
-        exp_timestamp = payload.get("exp")
-        if exp_timestamp is not None:
-            expires_at = datetime.fromtimestamp(exp_timestamp)
-            await crud_token_blacklist.create(db, object=TokenBlacklistCreate(token=token, expires_at=expires_at))
+    for token in (access_token, refresh_token):
+        await blacklist_token(token, db)
 
 
 async def blacklist_token(token: str, db: AsyncSession) -> None:
-    payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
+    try:
+        payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
+    except JWTError:
+        # Token is already invalid; nothing to blacklist.
+        return
+
     exp_timestamp = payload.get("exp")
-    if exp_timestamp is not None:
-        expires_at = datetime.fromtimestamp(exp_timestamp)
-        await crud_token_blacklist.create(db, object=TokenBlacklistCreate(token=token, expires_at=expires_at))
+    if exp_timestamp is None:
+        return
+
+    expires_at = datetime.fromtimestamp(int(exp_timestamp), tz=timezone.utc)
+    await crud_token_blacklist.create(
+        db, object=TokenBlacklistCreate(token=token, expires_at=expires_at)
+    )
