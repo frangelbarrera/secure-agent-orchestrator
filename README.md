@@ -336,3 +336,7 @@ in the README without evidence.
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+
+## Threat model
+
+See [docs/threat-model.md](docs/threat-model.md).
