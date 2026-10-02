@@ -9,7 +9,7 @@ branches.
 
 If you find a security issue, **please do not open a public GitHub
 issue**. Instead, email the maintainer at
-`security@frangelbarrera.dev` with:
+`frangelrcbarrera@gmail.com` with:
 
 1. A description of the issue and its impact.
 2. A minimal reproduction (curl commands, code snippet, or a repo).
