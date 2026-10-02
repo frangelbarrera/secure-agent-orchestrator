@@ -1,5 +1,13 @@
-# Threat model and operational limits
+**Maintainer:** Frangel Raúl Crespo Barrera
+**Last verified:** 2026-10-02
+**Scope:** agent registration, JWT authentication, authorization, command execution, secrets, replay, and resource exhaustion.
 
-The primary risks are unauthorized agent registration, broken authorization, JWT misuse, command execution, secret exposure, replay, and resource exhaustion. Documentation and tests should map each risk to a control and evidence.
+| Field | Current record |
+|---|---|
+| Status | Threats documented; controls require deployment-specific verification. |
+| Evidence | `src/`, `tests/test_api.py`, `tests/test_security.py`, `pyproject.toml`, `.env.example`, `.github/workflows/ci.yml`. |
+| Verification | `pytest -q`; inspect JWT, authorization, command and secret paths before deployment. |
+| Owner | Repository owner; deployment operator owns production configuration. |
+| Limitations | README, CI, and this model do not make the project production-hardened or compliant. |
 
-The project should be treated as early-stage until deployment-specific authentication, authorization, isolation, rate limiting, audit logging, and secret-management controls have been reviewed. Never place production secrets in examples, logs, fixtures, or CI.
+The project is early-stage until authentication, authorization, worker isolation, rate limiting, audit logging, and secret management have been reviewed for the actual deployment. Never place production secrets in examples, logs, fixtures, or CI.
