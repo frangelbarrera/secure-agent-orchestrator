@@ -16,4 +16,4 @@ pydantic-settings>=2.0.3
 bcrypt>=4.1.1
 fastcrud>=0.19.2
 crudadmin>=0.4.2
-gunicorn>=23.0.0
+gunicorn>=26.1.0
