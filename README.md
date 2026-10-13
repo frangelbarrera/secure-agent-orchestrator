@@ -238,6 +238,10 @@ All endpoints are prefixed with `/api/v1`.
 - No structured logging. The `logging` module is used directly; output
   is plain text, not JSON.
 
+## Standards scope
+
+See [COMPLIANCE.md](COMPLIANCE.md) for informative IEC 62443-3-3 scope notes; this is not a compliance or security-level claim.
+
 ## Testing
 
 ```bash
